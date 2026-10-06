@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kiosk — admin</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4; --card: #fff; --danger: #b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18181a; --fg: #ececea; --muted: #9a9a95; --line: #333336; --card: #222225; --danger: #e46962; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 60rem; margin: 0 auto; padding: 24px 16px; }
+  h1 { margin: 0 0 4px; } h2 { margin: 2rem 0 .5rem; }
+  .muted { color: var(--muted); }
+  .msg { padding: 8px 12px; border: 1px solid var(--line); background: var(--card); border-radius: 8px; overflow-wrap: anywhere; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: var(--card); }
+  th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; font-size: 13px; color: var(--muted); }
+  tr.default td { font-weight: 600; }
+  input[type=number] { width: 6rem; }
+  input, button { font: inherit; padding: 4px 8px; }
+  button.danger { color: #fff; background: var(--danger); border: 0; border-radius: 4px; padding: 6px 12px; cursor: pointer; }
+  code { overflow-wrap: anywhere; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 0 0 12px; }
+  dt { font-weight: 600; } dd { margin: 0; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>kiosk — admin</h1>
+  {{with .Msg}}<p class="msg">{{.}}</p>{{end}}
+  {{range .Problems}}<p class="msg">{{.}}</p>{{end}}
+
+  <h2>Browser accesi</h2>
+  {{if .Browsers}}
+  <div class="scroll">
+  <table>
+    <tr><th>Utente</th><th>Acceso dal</th><th>Viewer</th><th>Ultima attività</th><th>Download</th><th></th></tr>
+    {{range .Browsers}}
+    <tr>
+      <td>{{.User}}</td>
+      <td>{{if .Running}}{{date .Created}}{{else}}fermo{{end}}</td>
+      <td>{{.Viewers}}</td>
+      <td>{{date .LastSeen}}</td>
+      <td>{{if .Downloads.InProgress}}in corso{{else}}fermo{{end}} <span class="muted">· ultima scrittura {{date .Downloads.LastWrite}}</span></td>
+      <td>
+        <form method="post" action="/admin/destroy" onsubmit="return confirm('Distruggere il browser di {{.User}}? Profilo e cookie spariscono, i download restano.')">
+          <input type="hidden" name="user" value="{{.User}}"><button class="danger">Distruggi</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{else}}
+  <p class="muted">Nessun browser acceso.</p>
+  {{end}}
+
+  <h2>Quando un browser viene distrutto</h2>
+  <dl>
+    <dt>Stallo download</dt><dd>minuti senza download in corso né file scritti</dd>
+    <dt>Viewer inattivo</dt><dd>minuti senza nessuno collegato</dd>
+    <dt>Memoria</dt><dd>RAM massima del browser, in MB (vale dal prossimo browser creato)</dd>
+  </dl>
+  <p class="muted">Un browser viene distrutto quando valgono <em>entrambi</em> i tempi. La riga in grassetto vale per tutti; nelle righe degli utenti un campo vuoto usa il default.</p>
+  <div class="scroll">
+  <table>
+    <tr><th>Utente</th><th>Stallo download (min)</th><th>Viewer inattivo (min)</th><th>Memoria (MB)</th><th></th></tr>
+    <tr class="default">
+      <td>Default (tutti)</td>
+      <td><input form="f-defaults" type="number" name="stall_minutes" min="1" max="1440" value="{{.Defaults.StallMin}}" required></td>
+      <td><input form="f-defaults" type="number" name="viewer_idle_minutes" min="1" max="1440" value="{{.Defaults.ViewerIdleMin}}" required></td>
+      <td><input form="f-defaults" type="number" name="memory_mb" min="512" max="65536" step="256" value="{{if .Defaults.MemoryMB}}{{.Defaults.MemoryMB}}{{end}}" placeholder="nessun limite"></td>
+      <td><form id="f-defaults" method="post" action="/admin/defaults"><button>Salva</button></form></td>
+    </tr>
+    {{$d := .Defaults}}
+    {{range .Users}}
+    <tr>
+      <td>{{.User}}<br><span class="muted">ultimo uso {{date .LastUsed}}</span></td>
+      <td><input form="f-{{.User}}" type="number" name="stall_minutes" min="1" max="1440" value="{{with .Own.StallMin}}{{.}}{{end}}" placeholder="{{$d.StallMin}}"></td>
+      <td><input form="f-{{.User}}" type="number" name="viewer_idle_minutes" min="1" max="1440" value="{{with .Own.ViewerIdleMin}}{{.}}{{end}}" placeholder="{{$d.ViewerIdleMin}}"></td>
+      <td><input form="f-{{.User}}" type="number" name="memory_mb" min="512" max="65536" step="256" value="{{with .Own.MemoryMB}}{{.}}{{end}}" placeholder="{{if $d.MemoryMB}}{{$d.MemoryMB}}{{else}}nessun limite{{end}}"></td>
+      <td><form id="f-{{.User}}" method="post" action="/admin/settings"><input type="hidden" name="user" value="{{.User}}"><button>Salva</button></form></td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+
+  <h2>Immagine del browser</h2>
+  <p>In uso per i nuovi browser: <code>{{.Image}}</code></p>
+  <form method="post" action="/admin/image">
+    <label>Scarica e usa: <input name="ref" size="45" value="lscr.io/linuxserver/chromium:latest" required></label>
+    <button>Scarica</button>
+  </form>
+  <p class="muted">Si può indicare un tag: viene scaricato e fissato al suo digest. Può richiedere qualche minuto, non chiudere la pagina.</p>
+</main>
+</body>
+</html>

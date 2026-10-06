@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: MIT
+#
+# The gate on every pull request: formatting, vet, and the unit and contract
+# tests.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: test
+        run: go test -race ./...
+
+      - name: build
+        run: CGO_ENABLED=0 go build -trimpath ./cmd/kiosk
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+
+      - name: build the image
+        run: docker build --build-arg VERSION=ci -t kiosk:ci .
+      - name: check the image size
+        # A static Go binary on distroless is a few MB. A regression means
+        # something pulled in a base image by accident.
+        run: |
+          size=$(docker image inspect kiosk:ci --format '{{.Size}}')
+          limit=$((30 * 1024 * 1024))
+          echo "image is $((size / 1024 / 1024)) MB"
+          test "$size" -lt "$limit"

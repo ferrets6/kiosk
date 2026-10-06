@@ -1,0 +1,4 @@
+/bin/
+/kiosk
+*.exe
+.env
